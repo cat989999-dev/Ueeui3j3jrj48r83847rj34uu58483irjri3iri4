@@ -37,7 +37,7 @@ OWNER_ID = 7691071175
 TRACK_GROUP_ID = -1003946482336  
 REQUIRED_USERNAME_TAG = "@redcube"
 FSUB_CHANNEL = "@redcube_en"  
-GROUP_INVITE_LINK = "https://t.me/+rdKCTKOlxUE1Mjc8" # <--- Aapk diya hua permanent link
+GROUP_INVITE_LINK = "https://t.me/+rdKCTKOlxUE1Mjc8"
 
 # ================= HTTP SESSION (For Fast API Calls) =================
 HTTP_SESSION: aiohttp.ClientSession | None = None
@@ -50,7 +50,7 @@ async def get_session() -> aiohttp.ClientSession:
         HTTP_SESSION = aiohttp.ClientSession(connector=connector, timeout=timeout)
     return HTTP_SESSION
 
-# Raw API Caller like bot_native.py (Prevents Pyrogram Stuck Issues)
+# Raw API Caller
 async def tg(method: str, retries: int = 2, **params):
     clean = {k: v for k, v in params.items() if v is not None}
     base = f"https://api.telegram.org/bot{BOT_TOKEN}/"
@@ -107,11 +107,10 @@ PREMIUM_EMOJIS = {
     "💎": "5298988357538328017",
     "🏠": "5258503720928288433",
     "📢": "5938589252328624108",
-    "🔙": "5255703720078879038" # Premium emoji for Back
+    "🔙": "5255703720078879038"
 }
 
 def pe(emoji_char: str) -> str:
-    """Format emoji for TEXT messages."""
     eid = PREMIUM_EMOJIS.get(emoji_char)
     if eid: return f'<tg-emoji emoji-id="{eid}">{emoji_char}</tg-emoji>'
     return emoji_char
@@ -142,7 +141,7 @@ async def send_msg(chat_id: int, text: str, markup=None, parse_mode="HTML", repl
     try:
         return await tg("sendMessage", chat_id=chat_id, text=text, reply_markup=markup, parse_mode=parse_mode, reply_to_message_id=reply_to, disable_web_page_preview=disable_web_page_preview)
     except Exception as e:
-        print("Send Error:", e)
+        pass
 
 async def edit_msg(chat_id: int, message_id: int, text: str, markup=None, parse_mode="HTML", disable_web_page_preview=True):
     try:
@@ -166,6 +165,9 @@ user_states = {}
 active_tickets = {}   
 pending_tickets = {}  
 user_langs = {}  
+
+# DOUBLE MESSAGE PREVENTER (Anti-Spam Cache)
+processed_msgs = {}
 
 ldb_cache = {"daily": {"data": None, "time": 0}, "weekly": {"data": None, "time": 0}, "monthly": {"data": None, "time": 0}}
 ADMIN_CACHE = {"data": [], "time": 0}
@@ -266,6 +268,13 @@ TR = {
 }
 
 # ================= HELPER FUNCTIONS =================
+async def check_double_msg(user_id: int) -> bool:
+    now = time.time()
+    if user_id in processed_msgs and now - processed_msgs[user_id] < 1.5:
+        return True # Matlab ye msg spam/double hai, isko ignore karo
+    processed_msgs[user_id] = now
+    return False
+
 async def is_admin(user_id):
     if user_id == OWNER_ID: return True
     now = time.time()
@@ -412,23 +421,15 @@ async def is_user_subscribed(client: Client, user_id: int) -> bool:
         member = await client.get_chat_member(FSUB_CHANNEL, user_id)
         if member.status not in ["left", "kicked", "banned", "restricted"]:
             is_in_channel = True
-    except UserNotParticipant:
-        pass
-    except Exception as e:
-        if "Peer id invalid" not in str(e):
-            print(f"FSub Channel Check Error: {e}")
-        is_in_channel = True
+    except:
+        is_in_channel = True # Fallback if bot cant read
         
     try:
         member = await client.get_chat_member(TRACK_GROUP_ID, user_id)
         if member.status not in ["left", "kicked", "banned", "restricted"]:
             is_in_group = True
-    except UserNotParticipant:
-        pass
-    except Exception as e:
-        if "Peer id invalid" not in str(e):
-            print(f"FSub Group Check Error: {e}")
-        is_in_group = True
+    except:
+        is_in_group = True # Fallback if bot cant read
         
     return is_in_channel and is_in_group
 
@@ -490,6 +491,7 @@ async def background_verification_check():
 # ================= USER COMMANDS =================
 @app.on_message(filters.command("lang") & filters.private)
 async def lang_cmd(client: Client, message: Message):
+    if await check_double_msg(message.from_user.id): return
     if not await pass_fsub(client, message): return 
     btns = kb(
         [("English", "lang_en", "primary", "🇬🇧"), ("Русский", "lang_ru", "danger", "🇷🇺")],
@@ -512,6 +514,7 @@ async def access_cmd(client: Client, message: Message):
 
 @app.on_message(filters.command("start") & filters.private)
 async def start_cmd(client: Client, message: Message):
+    if await check_double_msg(message.from_user.id): return
     if not await pass_fsub(client, message): return 
     
     user = await get_or_create_user(message.from_user.id, message.from_user)
@@ -523,14 +526,12 @@ async def start_cmd(client: Client, message: Message):
             await users_db.update_one({"user_id": message.from_user.id}, {"$set": {"bio_link": invite.invite_link}})
             user["bio_link"] = invite.invite_link
         except Exception as e:
-            if "Peer id invalid" not in str(e):
-                print(f"Invite Link Error: {e}") 
-            return await send_msg(message.chat.id, f"{pe('❌')} Group invite link error. Bot must be admin.")
-
+            pass # Ignore link error and continue anyway so start doesnt break
+            
     welcome_head = TR[lang]["welcome_head"].format(name=html.escape(user['name']))
     await send_msg(message.chat.id, welcome_head, disable_web_page_preview=True)
     
-    welcome_body = TR[lang]["welcome"].format(tag=REQUIRED_USERNAME_TAG, link=user['bio_link'])
+    welcome_body = TR[lang]["welcome"].format(tag=REQUIRED_USERNAME_TAG, link=user.get('bio_link', 'No Link Generated'))
     await send_msg(message.chat.id, welcome_body, markup=get_main_menu(lang), disable_web_page_preview=True)
     
     if await is_admin(message.from_user.id):
@@ -538,12 +539,14 @@ async def start_cmd(client: Client, message: Message):
 
 @app.on_message(filters.command("help") & filters.private)
 async def help_cmd(client: Client, message: Message):
+    if await check_double_msg(message.from_user.id): return
     if not await pass_fsub(client, message): return 
     lang = await get_lang(message.from_user.id)
     await send_msg(message.chat.id, TR[lang]["help"])
 
 @app.on_message(filters.command("verify") & filters.private)
 async def verify_cmd(client: Client, message: Message):
+    if await check_double_msg(message.from_user.id): return
     if not await pass_fsub(client, message): return 
     user_id = message.from_user.id
     user_data = await get_or_create_user(user_id, message.from_user)
@@ -563,6 +566,7 @@ async def verify_cmd(client: Client, message: Message):
 
 @app.on_message(filters.command("affiliate") & filters.private)
 async def affiliate_cmd(client: Client, message: Message):
+    if await check_double_msg(message.from_user.id): return
     if not await pass_fsub(client, message): return 
     user = await get_or_create_user(message.from_user.id, message.from_user)
     lang = await get_lang(message.from_user.id)
@@ -578,6 +582,7 @@ async def affiliate_cmd(client: Client, message: Message):
 
 @app.on_message(filters.command("draw") & filters.private)
 async def show_draw_cmd(client: Client, message: Message):
+    if await check_double_msg(message.from_user.id): return
     if not await pass_fsub(client, message): return 
     lang = await get_lang(message.from_user.id)
     conf = await get_config()
@@ -605,6 +610,7 @@ async def show_draw_cmd(client: Client, message: Message):
 
 @app.on_message(filters.command(["daily", "weekly", "monthly", "leaderboard"]))
 async def leaderboard_cmd(client: Client, message: Message):
+    if await check_double_msg(message.from_user.id): return
     if not await pass_fsub(client, message): return 
     if message.chat.id < 0 and not await is_group_authorized(message.chat.id):
         return
@@ -624,6 +630,7 @@ async def leaderboard_cmd(client: Client, message: Message):
 
 @app.on_message(filters.command("support") & filters.private)
 async def support_cmd(client: Client, message: Message):
+    if await check_double_msg(message.from_user.id): return
     if not await pass_fsub(client, message): return 
     user_id = message.from_user.id
     lang = await get_lang(user_id)
@@ -636,6 +643,7 @@ async def support_cmd(client: Client, message: Message):
 
 @app.on_message(filters.command("withdraw") & filters.private)
 async def withdraw_cmd(client: Client, message: Message):
+    if await check_double_msg(message.from_user.id): return
     if not await pass_fsub(client, message): return 
     user_id = message.from_user.id
     lang = await get_lang(user_id)
@@ -675,7 +683,7 @@ async def close_cmd(client: Client, message: Message):
         t_lang = await get_lang(target_id)
         await send_msg(target_id, TR[t_lang]["tkt_closed"])
     except Exception as e: 
-        print(f"Error sending close message: {e}")
+        pass
         
 # ================= BACKGROUND TRACKERS =================
 @app.on_chat_join_request(filters.chat(TRACK_GROUP_ID))
@@ -948,7 +956,7 @@ async def cb_menu_main(client: Client, call: CallbackQuery):
     user = await get_or_create_user(call.from_user.id, call.from_user)
     lang = await get_lang(call.from_user.id)
     
-    welcome_body = TR[lang]["welcome"].format(tag=REQUIRED_USERNAME_TAG, link=user['bio_link'])
+    welcome_body = TR[lang]["welcome"].format(tag=REQUIRED_USERNAME_TAG, link=user.get('bio_link', ''))
     await edit_msg(call.message.chat.id, call.message.id, welcome_body, markup=get_main_menu(lang))
 
 @app.on_callback_query(filters.regex("^menu_verify$"))
@@ -1236,7 +1244,7 @@ async def cb_check_fsub(client: Client, call: CallbackQuery):
         welcome_head = TR[lang]["welcome_head"].format(name=html.escape(user['name']))
         await send_msg(call.message.chat.id, welcome_head, disable_web_page_preview=True)
         
-        welcome_body = TR[lang]["welcome"].format(tag=REQUIRED_USERNAME_TAG, link=user['bio_link'])
+        welcome_body = TR[lang]["welcome"].format(tag=REQUIRED_USERNAME_TAG, link=user.get('bio_link', ''))
         await send_msg(call.message.chat.id, welcome_body, markup=get_main_menu(lang), disable_web_page_preview=True)
     else:
         await call.answer("You haven't joined yet! Please join the channel first. ⚠️", show_alert=True)
@@ -1261,6 +1269,7 @@ async def ldb_callback(client: Client, call: CallbackQuery):
 
 @app.on_message(filters.private & filters.text & ~filters.regex(r"^/"))
 async def message_handler(client: Client, message: Message):
+    if await check_double_msg(message.from_user.id): return
     if not await pass_fsub(client, message): return 
     user_id = message.from_user.id
     lang = await get_lang(user_id)
