@@ -1,6 +1,12 @@
 import asyncio
-from aiohttp import web
-import os
+
+# ================= PYROGRAM ASYNCIO FIX (FOR NEWER PYTHON VERSIONS) =================
+try:
+    asyncio.get_event_loop()
+except RuntimeError:
+    asyncio.set_event_loop(asyncio.new_event_loop())
+# ====================================================================================
+
 import datetime
 import random
 import html
@@ -11,6 +17,9 @@ from pyrogram.types import Message, CallbackQuery, ChatJoinRequest, BotCommand
 from motor.motor_asyncio import AsyncIOMotorClient
 import aiohttp
 import dns.resolver
+
+# ================= PYDROID 3 / ANDROID DNS FIX =================
+# ... (बाकी का पूरा कोड इसके नीचे वैसा ही रहेगा) ...
 
 # ================= PYDROID 3 / ANDROID DNS FIX =================
 dns.resolver.default_resolver = dns.resolver.Resolver(configure=False)
