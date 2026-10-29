@@ -28,7 +28,7 @@ dns.resolver.default_resolver = dns.resolver.Resolver(configure=False)
 dns.resolver.default_resolver.nameservers = ['8.8.8.8', '8.8.4.4']
 
 # ================= CONFIGURATION =================
-BOT_TOKEN = "8873633012:AAEHljc145MbQtmzFSpXJJxFCehBqrTxeQM"
+BOT_TOKEN = "8873633012:AAFFaxFdhc1HXGQQphOZpoIUjMt4bbQYmh8"
 API_ID = 35831190  
 API_HASH = "f625657330797a7f149855cbdfcf9dae"
 MONGO_URI = "mongodb+srv://Cricket_231:Rohit1616%40@zolmdho.mongodb.net/?appName=Cluster0" 
@@ -149,7 +149,7 @@ async def edit_msg(chat_id: int, message_id: int, text: str, markup=None, parse_
 
 
 # ================= INITIALIZATION =================
-app = Client("my_advanced_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
+app = Client("my_advance6d_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
 client = AsyncIOMotorClient(MONGO_URI, maxPoolSize=50)
 db = client['AdvancedBotDB']
@@ -428,11 +428,12 @@ async def start_cmd(client: Client, message: Message):
         except:
             return await send_msg(message.chat.id, f"{pe('❌')} Group invite link error. Bot must be admin in Track Group.")
 
+    # DONO MESSAGES KO EK MEIN JOD DIYA GAYA HAI TAAKI DOUBLE NA AAYE
     welcome_head = TR[lang]["welcome_head"].format(name=html.escape(user['name']))
-    await send_msg(message.chat.id, welcome_head, disable_web_page_preview=True)
-    
     welcome_body = TR[lang]["welcome"].format(tag=REQUIRED_USERNAME_TAG, link=user['bio_link'])
-    await send_msg(message.chat.id, welcome_body, markup=get_main_menu(lang), disable_web_page_preview=True)
+    full_welcome_text = welcome_head + welcome_body
+
+    await send_msg(message.chat.id, full_welcome_text, markup=get_main_menu(lang), disable_web_page_preview=True)
     
     if await is_admin(message.from_user.id):
         await send_msg(message.chat.id, f"{pe('🛡')} <b>Admin Access Recognized!</b> Send /adminhelp to see your commands.")
@@ -547,25 +548,21 @@ async def withdraw_cmd(client: Client, message: Message):
     )
     await send_msg(message.chat.id, f"{pe('💰')} <b>Balance:</b> ${user['balance']}\n\nPlease select the withdrawal method:", markup=markup)
 
-# ================= NAYA COMMAND HANDLER =================
 @app.on_message(filters.command("close") & filters.private)
 async def close_cmd(client: Client, message: Message):
     user_id = message.from_user.id
     
-    # Check karna ki kya user kisi active ticket mein hai
     if user_id not in active_tickets: 
         return await send_msg(message.chat.id, "No active ticket.")
         
     target_id = active_tickets[user_id]
     
-    # Active ticket se dono users (admin aur user) ko nikalna
     del active_tickets[user_id]
     if target_id in active_tickets: 
         del active_tickets[target_id]
         
     await send_msg(message.chat.id, f"{pe('✅')} Ticket closed.")
     
-    # Dusre user (ya admin) ko bhi batana ki ticket close ho gaya hai
     try: 
         t_lang = await get_lang(target_id)
         await send_msg(target_id, TR[t_lang]["tkt_closed"])
@@ -842,8 +839,12 @@ async def cb_menu_main(client: Client, call: CallbackQuery):
     user = await get_or_create_user(call.from_user.id, call.from_user)
     lang = await get_lang(call.from_user.id)
     
+    # YAHAN BHI DONO KO JOD DIYA HAI
+    welcome_head = TR[lang]["welcome_head"].format(name=html.escape(user['name']))
     welcome_body = TR[lang]["welcome"].format(tag=REQUIRED_USERNAME_TAG, link=user['bio_link'])
-    await edit_msg(call.message.chat.id, call.message.id, welcome_body, markup=get_main_menu(lang))
+    full_welcome_text = welcome_head + welcome_body
+
+    await edit_msg(call.message.chat.id, call.message.id, full_welcome_text, markup=get_main_menu(lang))
 
 @app.on_callback_query(filters.regex("^menu_verify$"))
 async def cb_menu_verify(client: Client, call: CallbackQuery):
@@ -953,26 +954,24 @@ async def cb_menu_lang(client: Client, call: CallbackQuery):
     )
     await edit_msg(call.message.chat.id, call.message.id, "Select your language / Выберите язык / भाषा चुनें:", markup=btns)
 
-# ================= YAHAN PAR NAYA LANGUAGE CHANGE HANDLER ADD KIYA GAYA HAI =================
 @app.on_callback_query(filters.regex("^lang_(en|ru|hi)$"))
 async def cb_set_lang(client: Client, call: CallbackQuery):
     await call.answer()
     new_lang = call.data.split("_")[1]
     user_id = call.from_user.id
     
-    # DB me nayi language update kardo
     await users_db.update_one({"user_id": user_id}, {"$set": {"lang": new_lang}})
     user_langs[user_id] = new_lang
     
-    # User object fetch karo
     user = await get_or_create_user(user_id, call.from_user)
     
-    # Text ready karo (Language set message + Welcome message)
-    text = TR[new_lang]["lang_set"] + "\n\n" + TR[new_lang]["welcome"].format(tag=REQUIRED_USERNAME_TAG, link=user.get('bio_link', ''))
+    # YAHAN BHI DONO KO JOD DIYA HAI
+    welcome_head = TR[new_lang]["welcome_head"].format(name=html.escape(user['name']))
+    welcome_body = TR[new_lang]["welcome"].format(tag=REQUIRED_USERNAME_TAG, link=user.get('bio_link', ''))
     
-    # Main menu dikha do nayi language ke sath
+    text = TR[new_lang]["lang_set"] + "\n\n" + welcome_head + welcome_body
+    
     await edit_msg(call.message.chat.id, call.message.id, text, markup=get_main_menu(new_lang))
-# ===========================================================================================
 
 @app.on_callback_query(filters.regex("^menu_leaderboard$"))
 async def cb_menu_leaderboard(client: Client, call: CallbackQuery):
