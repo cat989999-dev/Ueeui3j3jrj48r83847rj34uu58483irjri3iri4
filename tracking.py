@@ -50,7 +50,7 @@ async def get_session() -> aiohttp.ClientSession:
         HTTP_SESSION = aiohttp.ClientSession(connector=connector, timeout=timeout)
     return HTTP_SESSION
 
-# Raw API Caller
+# Raw API Caller like bot_native.py (Prevents Pyrogram Stuck Issues)
 async def tg(method: str, retries: int = 2, **params):
     clean = {k: v for k, v in params.items() if v is not None}
     base = f"https://api.telegram.org/bot{BOT_TOKEN}/"
@@ -107,7 +107,7 @@ PREMIUM_EMOJIS = {
     "💎": "5298988357538328017",
     "🏠": "5258503720928288433",
     "📢": "5938589252328624108",
-    "🔙": "5255703720078879038"
+    "🔙": "5255703720078879038" # Premium emoji for Back
 }
 
 def pe(emoji_char: str) -> str:
@@ -401,7 +401,7 @@ async def generate_leaderboard_text(period, page):
             db_name = user_info[0].get("name") if user_info else None
             name = await fetch_real_name(res['_id'], db_name)
             safe_name = html.escape(name)
-            # Leaderboard names non-clickable ab
+            # Leaderboard names non-clickable
             text += f"<b>{i}.</b> {safe_name} - {res['total']} msgs\n"
             
     if page == 0:
@@ -422,14 +422,14 @@ async def is_user_subscribed(client: Client, user_id: int) -> bool:
         if member.status not in ["left", "kicked", "banned", "restricted"]:
             is_in_channel = True
     except:
-        is_in_channel = True # Fallback if bot cant read
+        is_in_channel = True 
         
     try:
         member = await client.get_chat_member(TRACK_GROUP_ID, user_id)
         if member.status not in ["left", "kicked", "banned", "restricted"]:
             is_in_group = True
     except:
-        is_in_group = True # Fallback if bot cant read
+        is_in_group = True 
         
     return is_in_channel and is_in_group
 
@@ -526,7 +526,7 @@ async def start_cmd(client: Client, message: Message):
             await users_db.update_one({"user_id": message.from_user.id}, {"$set": {"bio_link": invite.invite_link}})
             user["bio_link"] = invite.invite_link
         except Exception as e:
-            pass # Ignore link error and continue anyway so start doesnt break
+            pass 
             
     welcome_head = TR[lang]["welcome_head"].format(name=html.escape(user['name']))
     await send_msg(message.chat.id, welcome_head, disable_web_page_preview=True)
@@ -956,7 +956,7 @@ async def cb_menu_main(client: Client, call: CallbackQuery):
     user = await get_or_create_user(call.from_user.id, call.from_user)
     lang = await get_lang(call.from_user.id)
     
-    welcome_body = TR[lang]["welcome"].format(tag=REQUIRED_USERNAME_TAG, link=user.get('bio_link', ''))
+    welcome_body = TR[lang]["welcome"].format(tag=REQUIRED_USERNAME_TAG, link=user.get('bio_link', 'No Link Generated'))
     await edit_msg(call.message.chat.id, call.message.id, welcome_body, markup=get_main_menu(lang))
 
 @app.on_callback_query(filters.regex("^menu_verify$"))
@@ -1244,7 +1244,7 @@ async def cb_check_fsub(client: Client, call: CallbackQuery):
         welcome_head = TR[lang]["welcome_head"].format(name=html.escape(user['name']))
         await send_msg(call.message.chat.id, welcome_head, disable_web_page_preview=True)
         
-        welcome_body = TR[lang]["welcome"].format(tag=REQUIRED_USERNAME_TAG, link=user.get('bio_link', ''))
+        welcome_body = TR[lang]["welcome"].format(tag=REQUIRED_USERNAME_TAG, link=user.get('bio_link', 'No Link Generated'))
         await send_msg(call.message.chat.id, welcome_body, markup=get_main_menu(lang), disable_web_page_preview=True)
     else:
         await call.answer("You haven't joined yet! Please join the channel first. ⚠️", show_alert=True)
