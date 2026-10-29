@@ -29,7 +29,7 @@ dns.resolver.default_resolver = dns.resolver.Resolver(configure=False)
 dns.resolver.default_resolver.nameservers = ['8.8.8.8', '8.8.4.4']
 
 # ================= CONFIGURATION =================
-BOT_TOKEN = "9102679894:AAHHbtUxmu4zqVdSFUyu_rrslT7M08aMlZ0"
+BOT_TOKEN = "9102679894:AAEReNOc0AlRDv4NVixE1h7P872FuTpPs5M"
 API_ID = 35831190  
 API_HASH = "f625657330797a7f149855cbdfcf9dae"
 MONGO_URI = "mongodb+srv://Cricket_231:Rohit1616%40@zolmdho.mongodb.net/?appName=Cluster0" 
@@ -151,7 +151,7 @@ async def edit_msg(chat_id: int, message_id: int, text: str, markup=None, parse_
 
 
 # ================= INITIALIZATION =================
-app = Client("my_advanc97e6d_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
+app = Client("my_advanc978e6d_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
 client = AsyncIOMotorClient(MONGO_URI, maxPoolSize=50)
 db = client['Advanced56BotDB']
