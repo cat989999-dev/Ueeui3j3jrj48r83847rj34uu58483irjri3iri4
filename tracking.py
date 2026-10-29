@@ -428,12 +428,12 @@ async def start_cmd(client: Client, message: Message):
         except:
             return await send_msg(message.chat.id, f"{pe('❌')} Group invite link error. Bot must be admin in Track Group.")
 
-    # DONO MESSAGES KO EK MEIN JOD DIYA GAYA HAI TAAKI DOUBLE NA AAYE
+    # YAHAN DONO MESSAGES KO ALAG-ALAG BHEJNE KA CODE HAI
     welcome_head = TR[lang]["welcome_head"].format(name=html.escape(user['name']))
+    await send_msg(message.chat.id, welcome_head, disable_web_page_preview=True)
+    
     welcome_body = TR[lang]["welcome"].format(tag=REQUIRED_USERNAME_TAG, link=user['bio_link'])
-    full_welcome_text = welcome_head + welcome_body
-
-    await send_msg(message.chat.id, full_welcome_text, markup=get_main_menu(lang), disable_web_page_preview=True)
+    await send_msg(message.chat.id, welcome_body, markup=get_main_menu(lang), disable_web_page_preview=True)
     
     if await is_admin(message.from_user.id):
         await send_msg(message.chat.id, f"{pe('🛡')} <b>Admin Access Recognized!</b> Send /adminhelp to see your commands.")
@@ -839,12 +839,9 @@ async def cb_menu_main(client: Client, call: CallbackQuery):
     user = await get_or_create_user(call.from_user.id, call.from_user)
     lang = await get_lang(call.from_user.id)
     
-    # YAHAN BHI DONO KO JOD DIYA HAI
-    welcome_head = TR[lang]["welcome_head"].format(name=html.escape(user['name']))
+    # Yahan sirf buttons wala body aayega jab user back karega
     welcome_body = TR[lang]["welcome"].format(tag=REQUIRED_USERNAME_TAG, link=user['bio_link'])
-    full_welcome_text = welcome_head + welcome_body
-
-    await edit_msg(call.message.chat.id, call.message.id, full_welcome_text, markup=get_main_menu(lang))
+    await edit_msg(call.message.chat.id, call.message.id, welcome_body, markup=get_main_menu(lang))
 
 @app.on_callback_query(filters.regex("^menu_verify$"))
 async def cb_menu_verify(client: Client, call: CallbackQuery):
@@ -965,11 +962,8 @@ async def cb_set_lang(client: Client, call: CallbackQuery):
     
     user = await get_or_create_user(user_id, call.from_user)
     
-    # YAHAN BHI DONO KO JOD DIYA HAI
-    welcome_head = TR[new_lang]["welcome_head"].format(name=html.escape(user['name']))
     welcome_body = TR[new_lang]["welcome"].format(tag=REQUIRED_USERNAME_TAG, link=user.get('bio_link', ''))
-    
-    text = TR[new_lang]["lang_set"] + "\n\n" + welcome_head + welcome_body
+    text = TR[new_lang]["lang_set"] + "\n\n" + welcome_body
     
     await edit_msg(call.message.chat.id, call.message.id, text, markup=get_main_menu(new_lang))
 
