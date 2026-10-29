@@ -18,8 +18,10 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import aiohttp
 import dns.resolver
 
-# ================= PYDROID 3 / ANDROID DNS FIX =================
-# ... (बाकी का पूरा कोड इसके नीचे वैसा ही रहेगा) ...
+# ===== बस ये 2 लाइनें यहाँ पक्का होनी चाहिए =====
+from aiohttp import web
+import os
+# ================================================
 
 # ================= PYDROID 3 / ANDROID DNS FIX =================
 dns.resolver.default_resolver = dns.resolver.Resolver(configure=False)
