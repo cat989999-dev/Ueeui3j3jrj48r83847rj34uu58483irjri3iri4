@@ -28,7 +28,7 @@ dns.resolver.default_resolver = dns.resolver.Resolver(configure=False)
 dns.resolver.default_resolver.nameservers = ['8.8.8.8', '8.8.4.4']
 
 # ================= CONFIGURATION =================
-BOT_TOKEN = "8873633012:AAHx-IKyeeECMLKatmXFgtSmMJ_xp2_w9pc"
+BOT_TOKEN = "8873633012:AAEHljc145MbQtmzFSpXJJxFCehBqrTxeQM"
 API_ID = 35831190  
 API_HASH = "f625657330797a7f149855cbdfcf9dae"
 MONGO_URI = "mongodb+srv://Cricket_231:Rohit1616%40@zolmdho.mongodb.net/?appName=Cluster0" 
