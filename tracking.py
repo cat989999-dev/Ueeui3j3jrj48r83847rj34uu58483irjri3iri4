@@ -38,6 +38,7 @@ TRACK_GROUP_ID = -1003946482336
 REQUIRED_USERNAME_TAG = "@redcube"
 FSUB_CHANNEL = "@redcube_en"  
 GROUP_INVITE_LINK = "https://t.me/+rdKCTKOlxUE1Mjc8"
+BANNED_PROMOS = ["@raika", "@dices", "@booplay", "@axoms", "casino"]
 
 # ================= HTTP SESSION (For Fast API Calls) =================
 HTTP_SESSION: aiohttp.ClientSession | None = None
@@ -166,6 +167,10 @@ active_tickets = {}
 pending_tickets = {}  
 user_langs = {}  
 
+# Admin Notification Tracking (Store message IDs sent to admins to update them later)
+admin_ticket_msgs = {}   # Format: {ticket_id: {admin_id: message_id, ...}}
+admin_withdraw_msgs = {} # Format: {target_user_id: {admin_id: message_id, ...}}
+
 # DOUBLE MESSAGE PREVENTER (Anti-Spam Cache)
 processed_msgs = {}
 
@@ -271,7 +276,7 @@ TR = {
 async def check_double_msg(user_id: int) -> bool:
     now = time.time()
     if user_id in processed_msgs and now - processed_msgs[user_id] < 1.5:
-        return True # Matlab ye msg spam/double hai, isko ignore karo
+        return True 
     processed_msgs[user_id] = now
     return False
 
@@ -611,9 +616,12 @@ async def show_draw_cmd(client: Client, message: Message):
 @app.on_message(filters.command(["daily", "weekly", "monthly", "leaderboard"]))
 async def leaderboard_cmd(client: Client, message: Message):
     if await check_double_msg(message.from_user.id): return
-    if not await pass_fsub(client, message): return 
-    if message.chat.id < 0 and not await is_group_authorized(message.chat.id):
-        return
+    # Don't restrict leaderboard in group with fsub if they are just reading it
+    if message.chat.type.name != "PRIVATE":
+        if not await is_group_authorized(message.chat.id):
+            return
+    else:
+        if not await pass_fsub(client, message): return 
         
     cmd = message.command[0].lower()
     period = cmd if cmd in ["daily", "weekly", "monthly"] else "weekly"
@@ -622,10 +630,17 @@ async def leaderboard_cmd(client: Client, message: Message):
     
     text, max_pages = await generate_leaderboard_text(period, 0)
     
-    btns = kb(
-        [(tr["btn_daily"], "ldb_daily_0", "primary", "📅"), (tr["btn_weekly"], "ldb_weekly_0", "success", "📅"), (tr["btn_monthly"], "ldb_monthly_0", "primary", "📅")],
-        [(tr["btn_back"], "menu_main", "danger", "🔙")]
-    )
+    # Hide Back button in Groups
+    if message.chat.type.name == "PRIVATE":
+        btns = kb(
+            [(tr["btn_daily"], "ldb_daily_0", "primary", "📅"), (tr["btn_weekly"], "ldb_weekly_0", "success", "📅"), (tr["btn_monthly"], "ldb_monthly_0", "primary", "📅")],
+            [(tr["btn_back"], "menu_main", "danger", "🔙")]
+        )
+    else:
+        btns = kb(
+            [(tr["btn_daily"], "ldb_daily_0", "primary", "📅"), (tr["btn_weekly"], "ldb_weekly_0", "success", "📅"), (tr["btn_monthly"], "ldb_monthly_0", "primary", "📅")]
+        )
+        
     await send_msg(message.chat.id, text, markup=btns, disable_web_page_preview=True)
 
 @app.on_message(filters.command("support") & filters.private)
@@ -689,30 +704,38 @@ async def close_cmd(client: Client, message: Message):
 @app.on_chat_join_request(filters.chat(TRACK_GROUP_ID))
 async def handle_join_request(client: Client, request: ChatJoinRequest):
     user_id = request.from_user.id
+    
+    # Anti Fake Account Logic
+    user = request.from_user
+    if user.is_bot or user.is_fake or user.is_scam:
+        try:
+            await client.decline_chat_join_request(TRACK_GROUP_ID, user_id)
+        except: pass
+        return
+        
     await client.approve_chat_join_request(TRACK_GROUP_ID, user_id)
     
     if request.invite_link and request.invite_link.name and request.invite_link.name.startswith("Affiliate_"):
         inviter_id = int(request.invite_link.name.split("_")[1])
         inviter_data = await get_or_create_user(inviter_id)
         
-        is_fake = request.from_user.is_bot or request.from_user.is_fake
-        if is_fake:
-            await users_db.update_one({"user_id": inviter_id}, {"$addToSet": {"fake_affiliates": user_id}})
-        else:
-            if user_id not in inviter_data.get("affiliates", []):
-                await users_db.update_one({"user_id": inviter_id}, {"$addToSet": {"affiliates": user_id}})
-                
-                new_count = len(inviter_data.get("affiliates", [])) + 1
-                conf = await get_config()
-                if new_count % conf["affiliate_req"] == 0:
-                    reward = conf["affiliate_reward"]
-                    await users_db.update_one({"user_id": inviter_id}, {"$inc": {"balance": reward}})
-                    lang = await get_lang(inviter_id)
-                    msg = f"{pe('🎉')} <b>Congratulations!</b> You reached {conf['affiliate_req']} members. ${reward} added!"
-                    if lang == "ru": msg = f"{pe('🎉')} <b>Поздравляем!</b> Вы пригласили {conf['affiliate_req']} участников. Вам начислено ${reward}!"
-                    if lang == "hi": msg = f"{pe('🎉')} <b>बधाई हो!</b> आपने {conf['affiliate_req']} मेंबर्स जोड़ लिए हैं। आपके वॉलेट में ${reward} जुड़ गए हैं!"
-                    try: await send_msg(inviter_id, msg)
-                    except: pass
+        if user_id not in inviter_data.get("affiliates", []):
+            await users_db.update_one({"user_id": inviter_id}, {"$addToSet": {"affiliates": user_id}})
+            
+            new_count = len(inviter_data.get("affiliates", [])) + 1
+            conf = await get_config()
+            if new_count % conf["affiliate_req"] == 0:
+                reward = conf["affiliate_reward"]
+                await users_db.update_one({"user_id": inviter_id}, {"$inc": {"balance": reward}})
+                lang = await get_lang(inviter_id)
+                msg = f"{pe('🎉')} <b>Congratulations!</b> You reached {conf['affiliate_req']} members. ${reward} added!"
+                if lang == "ru": msg = f"{pe('🎉')} <b>Поздравляем!</b> Вы пригласили {conf['affiliate_req']} участников. Вам начислено ${reward}!"
+                if lang == "hi": msg = f"{pe('🎉')} <b>बधाई हो!</b> आपने {conf['affiliate_req']} मेंबर्स जोड़ लिए हैं। आपके वॉलेट में ${reward} जुड़ गए हैं!"
+                try: await send_msg(inviter_id, msg)
+                except: pass
+
+def contains_russian(text: str) -> bool:
+    return bool(re.search(r'[А-яЁё]', text))
 
 @app.on_message(filters.group, group=1)
 async def group_activity_tracker(client: Client, message: Message):
@@ -723,7 +746,28 @@ async def group_activity_tracker(client: Client, message: Message):
     full_name = message.from_user.first_name or "User"
     if message.from_user.last_name:
         full_name += f" {message.from_user.last_name}"
+        
+    # Anti-Russian Ban Logic
+    if message.text and contains_russian(message.text):
+        try:
+            await message.delete()
+            await client.ban_chat_member(message.chat.id, user_id)
+        except: pass
+        return
+        
+    # Promo Name Warning Logic
+    name_lower = full_name.lower()
+    has_promo = any(promo.lower() in name_lower for promo in BANNED_PROMOS)
     
+    if has_promo:
+        try:
+            await message.delete()
+            warning = await message.reply_text(f"{pe('⚠️')} <a href='tg://user?id={user_id}'>{html.escape(full_name)}</a>, please remove the promo from your profile name to send messages here.")
+            await asyncio.sleep(5)
+            await warning.delete()
+        except: pass
+        return
+
     today = str(datetime.date.today())
     await users_db.update_one({"user_id": user_id}, {"$set": {"name": full_name}}, upsert=True)
     await activity_db.update_one(
@@ -1094,15 +1138,27 @@ async def cb_set_lang(client: Client, call: CallbackQuery):
 @app.on_callback_query(filters.regex("^menu_leaderboard$"))
 async def cb_menu_leaderboard(client: Client, call: CallbackQuery):
     await call.answer()
-    if not await pass_fsub(client, call): return 
+    
+    if call.message.chat.type.name == "PRIVATE":
+        if not await pass_fsub(client, call): return 
+    else:
+        if not await is_group_authorized(call.message.chat.id): return
+
     lang = await get_lang(call.from_user.id)
     tr = TR.get(lang, TR["en"])
     
     text, max_pages = await generate_leaderboard_text("weekly", 0)
-    btns = kb(
-        [(tr["btn_daily"], "ldb_daily_0", "primary", "📅"), (tr["btn_weekly"], "ldb_weekly_0", "success", "📅"), (tr["btn_monthly"], "ldb_monthly_0", "primary", "📅")],
-        [(tr["btn_back"], "menu_main", "danger", "🔙")]
-    )
+    
+    if call.message.chat.type.name == "PRIVATE":
+        btns = kb(
+            [(tr["btn_daily"], "ldb_daily_0", "primary", "📅"), (tr["btn_weekly"], "ldb_weekly_0", "success", "📅"), (tr["btn_monthly"], "ldb_monthly_0", "primary", "📅")],
+            [(tr["btn_back"], "menu_main", "danger", "🔙")]
+        )
+    else:
+        btns = kb(
+            [(tr["btn_daily"], "ldb_daily_0", "primary", "📅"), (tr["btn_weekly"], "ldb_weekly_0", "success", "📅"), (tr["btn_monthly"], "ldb_monthly_0", "primary", "📅")]
+        )
+        
     await edit_msg(call.message.chat.id, call.message.id, text, markup=btns, disable_web_page_preview=True)
 
 @app.on_callback_query(filters.regex("^menu_withdraw$"))
@@ -1160,13 +1216,17 @@ async def ticket_accept(client: Client, call: CallbackQuery):
     active_tickets[target_id] = call.from_user.id
     active_tickets[call.from_user.id] = target_id
     
-    text = call.message.text or call.message.caption or ""
-    safe_text = html.escape(text)
-    
     admin_name = html.escape(call.from_user.first_name or "Admin")
-    safe_text += f"\n\n{pe('✅')} <b>Accepted by <a href='tg://user?id={call.from_user.id}'>{admin_name}</a></b>"
+    update_text = f"{pe('✅')} <b>Ticket Accepted & Resolved by <a href='tg://user?id={call.from_user.id}'>{admin_name}</a></b>"
     
-    await edit_msg(call.message.chat.id, call.message.id, safe_text, markup=None)
+    # Broadcast edit to all admins
+    if target_id in admin_ticket_msgs:
+        for aid, mid in admin_ticket_msgs[target_id].items():
+            try: await edit_msg(aid, mid, update_text, markup=None)
+            except: pass
+        del admin_ticket_msgs[target_id]
+    else:
+        await edit_msg(call.message.chat.id, call.message.id, update_text, markup=None)
     
     t_lang = await get_lang(target_id)
     await send_msg(target_id, TR[t_lang]["tkt_joined"])
@@ -1179,8 +1239,6 @@ async def ticket_reject(client: Client, call: CallbackQuery):
     target_id = int(call.data.split("_")[1])
     
     text = call.message.text or call.message.caption or ""
-    safe_text = html.escape(text)
-    
     match = re.search(r"#TKT\d+", text)
     ticket_id = match.group(0) if match else "#TKT_UNKNOWN"
     
@@ -1188,9 +1246,16 @@ async def ticket_reject(client: Client, call: CallbackQuery):
         del pending_tickets[target_id]
     
     admin_name = html.escape(call.from_user.first_name or "Admin")
-    safe_text += f"\n\n{pe('❌')} <b>Rejected by <a href='tg://user?id={call.from_user.id}'>{admin_name}</a></b>"
+    update_text = f"{pe('❌')} <b>Ticket Rejected by <a href='tg://user?id={call.from_user.id}'>{admin_name}</a></b>"
     
-    await edit_msg(call.message.chat.id, call.message.id, safe_text, markup=None)
+    # Broadcast edit to all admins
+    if target_id in admin_ticket_msgs:
+        for aid, mid in admin_ticket_msgs[target_id].items():
+            try: await edit_msg(aid, mid, update_text, markup=None)
+            except: pass
+        del admin_ticket_msgs[target_id]
+    else:
+        await edit_msg(call.message.chat.id, call.message.id, update_text, markup=None)
     
     t_lang = await get_lang(target_id)
     try: await send_msg(target_id, TR[t_lang]["tkt_rejected"].format(tkt=ticket_id))
@@ -1202,15 +1267,21 @@ async def wd_done(client: Client, call: CallbackQuery):
     if not await is_admin(call.from_user.id): return
     
     _, target_id, amount = call.data.split("_")
+    target_id = int(target_id)
     
-    # Send admin into wait state for Tx Link
-    user_states[call.from_user.id] = {"state": "wait_for_txlink", "target_id": int(target_id), "amount": amount}
+    user_states[call.from_user.id] = {"state": "wait_for_txlink", "target_id": target_id, "amount": amount}
     
-    text = call.message.text or call.message.caption or ""
-    safe_text = html.escape(text)
-    safe_text += f"\n\n{pe('✏️')} <b>Processing...</b>"
+    admin_name = html.escape(call.from_user.first_name or "Admin")
+    update_text = f"{pe('✅')} <b>Withdrawal Processed by <a href='tg://user?id={call.from_user.id}'>{admin_name}</a></b>"
     
-    await edit_msg(call.message.chat.id, call.message.id, safe_text, markup=None)
+    # Broadcast edit to all admins
+    if target_id in admin_withdraw_msgs:
+        for aid, mid in admin_withdraw_msgs[target_id].items():
+            try: await edit_msg(aid, mid, update_text, markup=None)
+            except: pass
+        del admin_withdraw_msgs[target_id]
+    else:
+        await edit_msg(call.message.chat.id, call.message.id, update_text, markup=None)
     
     await send_msg(call.message.chat.id, f"{pe('✏️')} <b>Please type the Transaction Link for this withdrawal:</b>")
 
@@ -1220,13 +1291,21 @@ async def wd_reject(client: Client, call: CallbackQuery):
     if not await is_admin(call.from_user.id): return
     
     _, target_id, amount = call.data.split("_")
-    user_states[call.from_user.id] = {"state": "wait_for_reason", "target_id": int(target_id), "amount": amount}
+    target_id = int(target_id)
     
-    text = call.message.text or call.message.caption or ""
-    safe_text = html.escape(text)
-    safe_text += f"\n\n{pe('✏️')} <b>Processing Rejection...</b>"
+    user_states[call.from_user.id] = {"state": "wait_for_reason", "target_id": target_id, "amount": amount}
     
-    await edit_msg(call.message.chat.id, call.message.id, safe_text, markup=None)
+    admin_name = html.escape(call.from_user.first_name or "Admin")
+    update_text = f"{pe('❌')} <b>Withdrawal Rejected by <a href='tg://user?id={call.from_user.id}'>{admin_name}</a></b>"
+    
+    # Broadcast edit to all admins
+    if target_id in admin_withdraw_msgs:
+        for aid, mid in admin_withdraw_msgs[target_id].items():
+            try: await edit_msg(aid, mid, update_text, markup=None)
+            except: pass
+        del admin_withdraw_msgs[target_id]
+    else:
+        await edit_msg(call.message.chat.id, call.message.id, update_text, markup=None)
     
     await send_msg(call.message.chat.id, f"{pe('✏️')} <b>Please type the reason for rejection:</b>")
 
@@ -1235,7 +1314,6 @@ async def wd_reject(client: Client, call: CallbackQuery):
 async def cb_check_fsub(client: Client, call: CallbackQuery):
     if await is_user_subscribed(client, call.from_user.id):
         await call.answer("Joined successfully! ✅", show_alert=True)
-        # Verify hone ke baad start wala welcome message dikhana
         user = await get_or_create_user(call.from_user.id, call.from_user)
         lang = await get_lang(call.from_user.id)
         
@@ -1259,10 +1337,16 @@ async def ldb_callback(client: Client, call: CallbackQuery):
     
     text, max_pages = await generate_leaderboard_text(period, 0)
     
-    btns = kb(
-        [(tr["btn_daily"], "ldb_daily_0", "primary", "📅"), (tr["btn_weekly"], "ldb_weekly_0", "success", "📅"), (tr["btn_monthly"], "ldb_monthly_0", "primary", "📅")],
-        [(tr["btn_back"], "menu_main", "danger", "🔙")]
-    )
+    # Check if private or group for Back button
+    if call.message.chat.type.name == "PRIVATE":
+        btns = kb(
+            [(tr["btn_daily"], "ldb_daily_0", "primary", "📅"), (tr["btn_weekly"], "ldb_weekly_0", "success", "📅"), (tr["btn_monthly"], "ldb_monthly_0", "primary", "📅")],
+            [(tr["btn_back"], "menu_main", "danger", "🔙")]
+        )
+    else:
+        btns = kb(
+            [(tr["btn_daily"], "ldb_daily_0", "primary", "📅"), (tr["btn_weekly"], "ldb_weekly_0", "success", "📅"), (tr["btn_monthly"], "ldb_monthly_0", "primary", "📅")]
+        )
     
     try: await edit_msg(call.message.chat.id, call.message.id, text, markup=btns)
     except: pass
@@ -1287,15 +1371,17 @@ async def message_handler(client: Client, message: Message):
         ticket_id = f"#TKT{random.randint(10000, 99999)}"
         pending_tickets[user_id] = ticket_id  
         
-        # PURE TEXT BUTTONS - NO EMOJIS FOR ADMIN ACTIONS
         btns = kb(
             [("Accept", f"tktacc_{user_id}", "success"), ("Reject", f"tktrej_{user_id}", "danger")]
         )
         admin_text = f"{pe('🎟')} <b>New Support Ticket ({ticket_id})</b>\n{pe('👥')} User: <a href='tg://user?id={user_id}'>{safe_name}</a> (<code>{user_id}</code>)\n{pe('✏️')} <b>Reason:</b> {html.escape(reason)}"
         
         admins = await admins_db.find().to_list(100)
+        admin_ticket_msgs[user_id] = {}
         for aid in set([OWNER_ID] + [a["user_id"] for a in admins]):
-            try: await send_msg(aid, admin_text, markup=btns)
+            try: 
+                msg = await send_msg(aid, admin_text, markup=btns)
+                if msg: admin_ticket_msgs[user_id][aid] = msg['message_id']
             except: pass
             
         markup = kb([(TR[lang]["btn_back"], "menu_main", "primary", "🔙")])
@@ -1310,7 +1396,6 @@ async def message_handler(client: Client, message: Message):
         await users_db.update_one({"user_id": user_id}, {"$inc": {"balance": -amount}})
         del user_states[user_id]
         
-        # PURE TEXT BUTTONS - NO EMOJIS FOR ADMIN ACTIONS
         btns = kb(
             [("Accept", f"wdone_{user_id}_{amount}", "success"), ("Reject", f"wrej_{user_id}_{amount}", "danger")]
         )
@@ -1318,8 +1403,11 @@ async def message_handler(client: Client, message: Message):
         admin_text = f"{pe('🆕')} <b>Withdrawal Request ({method})</b>\n{pe('👨‍💻')} User: <a href='tg://user?id={user_id}'>{safe_name}</a> (<code>{user_id}</code>)\n{pe('💰')} Amount: ${amount}\n{pe('📍')} Address: <code>{html.escape(address_info)}</code>"
         
         admins = await admins_db.find().to_list(100)
+        admin_withdraw_msgs[user_id] = {}
         for aid in set([OWNER_ID] + [a["user_id"] for a in admins]):
-            try: await send_msg(aid, admin_text, markup=btns)
+            try: 
+                msg = await send_msg(aid, admin_text, markup=btns)
+                if msg: admin_withdraw_msgs[user_id][aid] = msg['message_id']
             except: pass
             
         markup = kb([(TR[lang]["btn_back"], "menu_main", "primary", "🔙")])
@@ -1376,7 +1464,6 @@ async def web_server():
     runner = web.AppRunner(web_app)
     await runner.setup()
     
-    # Render environment se dynamically port lega, warna default 8080 use karega
     port = int(os.environ.get("PORT", 8080))
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
@@ -1386,10 +1473,7 @@ async def web_server():
 async def main():
     await app.start()
     
-    # 1. Fake Web server ko background me start karna
     asyncio.create_task(web_server())
-    
-    # 2. Verification check start karna
     asyncio.create_task(background_verification_check())
     
     await app.set_bot_commands([
